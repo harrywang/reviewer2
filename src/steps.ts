@@ -52,6 +52,14 @@ export {
   type LivePricingOptions,
   type PricingTable,
 } from "./cost.js";
+
+export {
+  DEFAULT_PROMPT_BLOCKS,
+  defaultPromptTemplates,
+  type PromptBlocks,
+  type PromptOverrides,
+  type PromptTemplates,
+} from "./prompts.js";
 export { splitIntoParagraphs } from "./textutils.js";
 export type {
   PaperReviewJson,

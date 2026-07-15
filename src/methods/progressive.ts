@@ -18,7 +18,6 @@ import { chat } from "../client.js";
 import {
   consolidationPrompt,
   deepCheckPrompt,
-  OCR_CAVEAT,
   overallFeedbackPrompt,
   summaryUpdatePrompt,
   technicalFilterPrompt,
@@ -95,13 +94,13 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
     : windowContext;
 
   // Step 1: Deep-check
-  const ocrCaveat = options.ocr ? OCR_CAVEAT : "";
   const prompt = deepCheckPrompt({
     context,
     passage: passage.text,
     currentDate,
-    ocrCaveat,
+    ocr: options.ocr,
     progressive: true,
+    overrides: options.prompts,
   });
   const deepCheck = await chat([{ role: "user", content: prompt }], {
     ...chatOpts,
@@ -124,6 +123,7 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
     passageText: passage.text,
     passageIdx: passageIndex,
     totalPassages: plan.passages.length,
+    overrides: options.prompts,
   });
   const summaryResp = await chat([{ role: "user", content: summaryPrompt }], {
     ...chatOpts,
@@ -146,7 +146,7 @@ export async function isTechnicalPassage(
   options: ReviewOptions = {},
 ): Promise<{ technical: boolean; usage: TokenUsage }> {
   const { text, usage } = await chat(
-    [{ role: "user", content: technicalFilterPrompt(passageText.slice(0, 2000)) }],
+    [{ role: "user", content: technicalFilterPrompt(passageText.slice(0, 2000), options.prompts) }],
     { ...chatOptionsFrom(options), maxTokens: 8 },
   );
   return {
@@ -181,7 +181,7 @@ export async function consolidateComments(
   const issuesJson = JSON.stringify(comments.map(commentToJson), null, 2);
   const outputCap = countTokens(issuesJson) + 1024;
   const { text, usage: callUsage } = await chat(
-    [{ role: "user", content: consolidationPrompt(issuesJson) }],
+    [{ role: "user", content: consolidationPrompt(issuesJson, options.prompts) }],
     { ...chatOptionsFrom(options), maxTokens: outputCap },
   );
   usage.promptTokens += callUsage.promptTokens;
@@ -214,7 +214,7 @@ export async function generateOverallFeedback(
   options: ReviewOptions = {},
 ): Promise<{ feedback: string; usage: TokenUsage }> {
   const { text, usage } = await chat(
-    [{ role: "user", content: overallFeedbackPrompt(documentContent.slice(0, 8000)) }],
+    [{ role: "user", content: overallFeedbackPrompt(documentContent.slice(0, 8000), options.prompts) }],
     { ...chatOptionsFrom(options), maxTokens: 2048 },
   );
   return { feedback: text.trim(), usage };
@@ -277,6 +277,7 @@ export async function reviewProgressive(
                 passageText: plan.passages[idx].text,
                 passageIdx: idx,
                 totalPassages: plan.passages.length,
+                overrides: options.prompts,
               }),
             },
           ],

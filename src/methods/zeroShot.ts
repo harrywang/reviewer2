@@ -2,7 +2,7 @@
 
 import { chat } from "../client.js";
 import { mapWithConcurrency } from "../concurrency.js";
-import { largePaperChunkPrompt, OCR_CAVEAT, zeroShotPrompt } from "../prompts.js";
+import { largePaperChunkPrompt, zeroShotPrompt } from "../prompts.js";
 import { parseReviewResponse } from "../parsing.js";
 import { assignParagraphIndices } from "../textutils.js";
 import { chunkText, countTokens } from "../tokens.js";
@@ -17,7 +17,6 @@ export async function reviewZeroShot(
   options: ReviewOptions = {},
 ): Promise<ReviewResult> {
   const currentDate = resolveCurrentDate(options);
-  const ocrCaveat = options.ocr ? OCR_CAVEAT : "";
   const chatOpts = chatOptionsFrom(options);
 
   const result: ReviewResult = {
@@ -34,7 +33,12 @@ export async function reviewZeroShot(
   const tokenCount = countTokens(documentContent);
 
   if (tokenCount <= MAX_TOKENS_SINGLE) {
-    const prompt = zeroShotPrompt({ paperText: documentContent, currentDate, ocrCaveat });
+    const prompt = zeroShotPrompt({
+      paperText: documentContent,
+      currentDate,
+      ocr: options.ocr,
+      overrides: options.prompts,
+    });
     const { text, usage } = await chat([{ role: "user", content: prompt }], {
       ...chatOpts,
       maxTokens: 8192,
@@ -61,7 +65,8 @@ export async function reviewZeroShot(
         totalChunks: chunks.length,
         chunkText: chunk,
         currentDate,
-        ocrCaveat,
+        ocr: options.ocr,
+        overrides: options.prompts,
       });
       const { text, usage } = await chat([{ role: "user", content: prompt }], {
         ...chatOpts,

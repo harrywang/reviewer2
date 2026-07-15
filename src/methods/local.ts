@@ -2,7 +2,7 @@
 
 import { chat } from "../client.js";
 import { mapWithConcurrency } from "../concurrency.js";
-import { deepCheckPrompt, OCR_CAVEAT, overallFeedbackPrompt } from "../prompts.js";
+import { deepCheckPrompt, overallFeedbackPrompt } from "../prompts.js";
 import { parseCommentsFromResponse } from "../parsing.js";
 import {
   getWindowContext,
@@ -19,7 +19,6 @@ export async function reviewLocal(
   options: ReviewOptions = {},
 ): Promise<ReviewResult> {
   const currentDate = resolveCurrentDate(options);
-  const ocrCaveat = options.ocr ? OCR_CAVEAT : "";
   const windowSize = options.windowSize ?? 3;
   const chatOpts = chatOptionsFrom(options);
 
@@ -51,7 +50,8 @@ export async function reviewLocal(
       context,
       passage: chunk.text,
       currentDate,
-      ocrCaveat,
+      ocr: options.ocr,
+      overrides: options.prompts,
     });
     const { text, usage } = await chat([{ role: "user", content: prompt }], {
       ...chatOpts,
@@ -85,7 +85,7 @@ export async function reviewLocal(
   // Overall feedback from the paper's beginning
   await options.onProgress?.({ stage: "overall_feedback" });
   const { text: feedback, usage } = await chat(
-    [{ role: "user", content: overallFeedbackPrompt(documentContent.slice(0, 8000)) }],
+    [{ role: "user", content: overallFeedbackPrompt(documentContent.slice(0, 8000), options.prompts) }],
     { ...chatOpts, maxTokens: 2048 },
   );
   result.overallFeedback = feedback.trim();

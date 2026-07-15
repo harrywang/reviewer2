@@ -119,9 +119,17 @@ export interface ChatOptions extends ProviderConfig {
   signal?: AbortSignal;
 }
 
+import type { PromptOverrides } from "./prompts.js";
+
 export interface ReviewOptions extends ProviderConfig {
   /** Model id, e.g. "gpt-5.2", "anthropic/claude-opus-4-6", "openai/gpt-5.2-pro". */
   model?: string;
+  /**
+   * Customize the prompts: override shared building blocks (e.g. just the
+   * check criteria) and/or whole templates with {placeholder} interpolation.
+   * Plain strings — JSON-safe for DB storage and Inngest step boundaries.
+   */
+  prompts?: PromptOverrides;
   reasoningEffort?: ReasoningEffort | null;
   /** True when the text came from OCR — adds an OCR caveat to prompts. */
   ocr?: boolean;

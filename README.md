@@ -124,16 +124,123 @@ highlighting (fuzzy quote matching, ported from the Python implementation).
 An optional `severity` field (`major`/`moderate`/`minor`) is understood by the
 viz if you add your own tiering pass.
 
+## How it works
+
+The flowchart below traces a paper through the pipeline. Every shaded
+double-bordered node is **one LLM call**, labeled with the name of its
+prompt template — each one is an injection point for the
+[`prompts` option](#customizing-prompts): right before the call, the
+builder resolves the effective template (template override > block
+override > default) and interpolates the placeholders.
+
+```mermaid
+flowchart TD
+    IN["PDF / DOCX / TeX / MD<br/>arXiv URL / file URL"] --> PARSE["parseDocument /<br/>parseDocumentBuffer<br/>→ plain text + OCR flag"]
+    PARSE --> SPLIT["splitIntoParagraphs<br/>(quote anchors point here)"]
+    SPLIT --> METHOD{"method?"}
+
+    %% ── progressive (default) ──
+    METHOD -- "progressive (default)" --> PP["mergeIntoPassages<br/>(~8k chars each)"]
+    PP --> LOOP["next passage<br/>(strictly sequential)"]
+    LOOP -.->|"optional skipNontechnical"| TF[["technicalFilter<br/>(yes/no: worth checking?)"]]
+    TF -.-> DC
+    LOOP --> DC[["deepCheckProgressive<br/>(running summary + window<br/>+ passage → issues)"]]
+    DC --> ANCH1["parse comments,<br/>anchor quotes to paragraphs"]
+    ANCH1 --> SU[["summaryUpdate<br/>(fold passage into<br/>running summary)"]]
+    SU -- "more passages" --> LOOP
+    SU -- "all passages done" --> OF1[["overallFeedback<br/>(paper's first 8k chars)"]]
+    OF1 --> CONS[["consolidation<br/>(dedup + prune<br/>all collected issues)"]]
+    CONS --> OUT
+
+    %% ── local ──
+    METHOD -- "local" --> LC["mergeIntoPassages<br/>(~4k chars each)"]
+    LC --> DCL[["deepCheck<br/>(window context, chunks<br/>reviewed in parallel)"]]
+    DCL --> ANCH2["anchor quotes<br/>to paragraphs"]
+    ANCH2 --> OF2[["overallFeedback"]]
+    OF2 --> OUT
+
+    %% ── zero_shot ──
+    METHOD -- "zero_shot" --> SIZE{"paper ≤ 100k<br/>tokens?"}
+    SIZE -- "yes" --> ZS[["zeroShot<br/>(whole paper, one call)"]]
+    SIZE -- "no" --> LPC[["largePaperChunk<br/>(one call per<br/>80k-token chunk)"]]
+    ZS --> ANCH3["anchor quotes<br/>to paragraphs"]
+    LPC --> ANCH3
+    ANCH3 --> OUT
+
+    OUT["buildPaperJson →<br/>viz-compatible JSON<br/>(slug · title · paragraphs · methods)"]
+
+    classDef llm fill:#fff3cd,stroke:#b8860b,color:#1f2937;
+    class TF,DC,SU,OF1,CONS,DCL,OF2,ZS,LPC llm;
+```
+
+**Why `splitIntoParagraphs` matters:** it's computed once, deterministically
+(split on blank lines; fragments under 100 chars merge into the next
+paragraph so headings and stray lines don't stand alone), and everything
+downstream is expressed in its coordinates. The output JSON's `paragraphs`
+array is this exact list; review passages are merges of adjacent paragraphs
+that remember their indices; and since LLMs return quotes rather than
+positions, each comment's quote is fuzzy-matched back to a paragraph to set
+`paragraph_index` — the anchor a UI uses to highlight where in the paper a
+comment points.
+
+Which prompt runs where, at a glance:
+
+| Prompt template | Used by | Purpose |
+|---|---|---|
+| `deepCheckProgressive` | progressive | The core review call — finds issues in one passage given the running summary + surrounding context |
+| `summaryUpdate` | progressive | Maintains the running summary of definitions/equations/claims |
+| `consolidation` | progressive | Final dedup/prune over all collected issues |
+| `technicalFilter` | progressive (opt-in) | Cheap yes/no gate to skip non-technical passages |
+| `deepCheck` | local | Per-chunk review with window context only |
+| `overallFeedback` | progressive + local | One-paragraph assessment from the paper's opening |
+| `zeroShot` | zero_shot | Whole paper in a single prompt |
+| `largePaperChunk` | zero_shot (>100k tokens) | Per-chunk fallback for very long papers |
+
 ## Review methods
 
-- **`progressive`** (default) — sequential pass with a running summary of
-  definitions/equations/claims, then a consolidation pass that dedups issues.
-  Best quality; 2 LLM calls per ~8 k-char passage. Returns both consolidated
-  and pre-consolidation (`progressive_original`) blocks.
-- **`local`** — window-context deep-check of each chunk, independently
-  (parallelized with `concurrency`, default 4). No consolidation.
-- **`zero_shot`** — single prompt (or chunked for >100 k-token papers).
-  Fastest and cheapest.
+Pick with the `method` option on `reviewPaper`. **Default: `progressive`** —
+the highest-quality method and the one the original project's benchmarks are
+built around.
+
+| Method | How it reads the paper | LLM calls | Speed / cost | Reach for it when |
+|---|---|---|---|---|
+| **`progressive`** (default) | Sequentially, like a careful reviewer: maintains a running summary of definitions, equations, and claims, deep-checks each ~8k-char passage against that accumulated context, then a final consolidation pass dedups and prunes weak issues | 2 per passage + feedback + consolidation (strictly sequential) | Slowest — minutes to tens of minutes | You want the best review; catches cross-section inconsistencies (e.g. a number in §5 contradicting Table 2) that per-chunk methods miss |
+| **`local`** | Each ~4k-char chunk independently, with a window of surrounding chunks as context — no memory of the rest of the paper, no dedup pass | 1 per chunk + feedback (parallel, `concurrency` option, default 4) | Middle | You want passage-level scrutiny fast and can tolerate some duplicate/local-only findings |
+| **`zero_shot`** | The whole paper in one prompt (auto-chunks above ~100k tokens) | 1 (or 1 per 80k-token chunk) | Fastest, cheapest | Quick triage or a cheap first pass |
+
+How they differ in practice: `progressive` is the only method that carries
+memory across the paper (the running summary), which is where the
+hardest-to-spot issues live — notation drift, parameter values contradicting
+earlier tables, overclaims relative to what was actually shown. `local` trades
+that global memory for parallelism; `zero_shot` trades depth for a single
+cheap call.
+
+**Why not just one big prompt?** `zero_shot` gives the model all the
+information, but having it in context isn't the same as using it:
+
+- **Attention dilutes** over long context — a single pass over 50k tokens
+  skims and reports only the most salient issues ("lost in the middle").
+  Progressive re-focuses full attention on one ~8k-char passage at a time.
+- **The output budget doesn't scale** — one call means one answer for the
+  whole paper, so the model self-truncates to a top-N list. Progressive
+  gives every passage its own response budget.
+- **Cross-references stay implicit** — catching "§5 contradicts Table 2"
+  in one pass requires spontaneously connecting facts 40 pages apart.
+  The running summary re-presents every definition and claimed value next
+  to each new passage, turning long-range contradictions into short-range
+  collisions.
+- **No second chance** — progressive over-generates per passage and lets
+  the consolidation pass prune; whatever a single call misses stays missed.
+
+The trade-off is real: `zero_shot` is ~35× fewer calls, which is why it
+exists for triage.
+
+For scale: a 25-page paper through `progressive` with `gpt-5-mini` is ~35 LLM
+calls, ~10 minutes, ≈$0.10. The same paper through `zero_shot` is one call.
+
+`progressive` also returns the pre-consolidation comments as a separate
+`progressive_original` method block in the output JSON, so a UI can show
+"all raw findings" vs "consolidated" side by side.
 
 ## Document parsing
 
@@ -158,6 +265,123 @@ const parsed = await parseDocumentBuffer(pdfBytes, "pdf", {
   links work; extension-less PDF URLs are detected via `Content-Type`).
 
 Pass `ocr: parsed.wasOcr` to `reviewPaper` so prompts include the OCR caveat.
+
+## Customizing prompts
+
+Every prompt is customizable via the `prompts` option, at two levels. Both
+are plain strings — JSON-safe, so custom prompts can be stored per
+user/track in a database and passed through Inngest step boundaries.
+
+**1. Block overrides** — replace one shared building block, keep the prompt
+structure. The most common tweak is the check criteria:
+
+```ts
+await reviewPaper(text, {
+  prompts: {
+    blocks: {
+      checkCriteria: `Check for:
+1. Statistical validity: p-hacking, underpowered samples, wrong tests
+2. Reproducibility: missing data/code availability, underspecified methods
+3. Overclaiming relative to the evidence presented`,
+    },
+  },
+});
+```
+
+Available blocks: `reviewerPreamble`, `checkCriteria`, `explanationStyle`,
+`leniencyRules`, `doNotFlag`, `ocrCaveat`, `jsonArrayOutput` — see
+`DEFAULT_PROMPT_BLOCKS` for the default text of each.
+
+**2. Template overrides** — replace an entire prompt. Templates use
+`{placeholder}` interpolation (single-pass, so LaTeX braces in paper text
+are never mangled; unknown placeholders are left as-is):
+
+```ts
+await reviewPaper(text, {
+  prompts: {
+    templates: {
+      overallFeedback: `You are a harsh but fair Reviewer #2. In one paragraph,
+assess the paper below and name its single biggest weakness.
+
+PAPER (beginning):
+{paperStart}`,
+    },
+  },
+});
+```
+
+**A completely different review prompt** — replace `deepCheckProgressive`
+(the main prompt of the default method). Reuse the default output-format
+block so the built-in parser still understands the response:
+
+```ts
+import { DEFAULT_PROMPT_BLOCKS, reviewPaper } from "reviewer2";
+
+const empiricalDeepCheck = `You are a methodologist reviewing an empirical
+social-science paper. Today's date is {currentDate}.
+
+{ocrCaveat}
+CONTEXT (running summary + surrounding sections):
+{context}
+
+---
+
+PASSAGE TO CHECK:
+{passage}
+
+---
+
+Check ONLY for:
+1. Identification problems: confounds, selection, reverse causality
+2. Statistical issues: wrong test, multiple comparisons, p-hacking signs
+3. Measurement validity: does the variable measure the claimed construct?
+4. External validity claims beyond the sample
+
+${DEFAULT_PROMPT_BLOCKS.jsonArrayOutput}`;
+
+await reviewPaper(text, {
+  prompts: { templates: { deepCheckProgressive: empiricalDeepCheck } },
+});
+```
+
+**Switching prompt sets per run** — because overrides are plain JSON, you
+can keep named presets (in code or a DB row) and pick one per paper/track:
+
+```ts
+import type { PromptOverrides } from "reviewer2";
+
+const PRESETS: Record<string, PromptOverrides> = {
+  theoretical: {},                                    // package defaults
+  empirical: {
+    blocks: { checkCriteria: "Check for:\n1. Statistical validity…" },
+  },
+  strict: {
+    blocks: { leniencyRules: "Be lenient with nothing. Flag every issue." },
+  },
+};
+
+await reviewPaper(text, { prompts: PRESETS[track.reviewStyle] });
+```
+
+| Template | Placeholders |
+|---|---|
+| `deepCheck` / `deepCheckProgressive` | `{currentDate}` `{ocrCaveat}` `{context}` `{passage}` |
+| `zeroShot` | `{currentDate}` `{ocrCaveat}` `{paperText}` |
+| `largePaperChunk` | `{currentDate}` `{ocrCaveat}` `{chunkNum}` `{totalChunks}` `{chunkText}` |
+| `summaryUpdate` | `{currentSummary}` `{passageText}` `{passageIdx}` `{totalPassages}` |
+| `technicalFilter` | `{passage}` (answer must be exactly "yes"/"no") |
+| `consolidation` | `{issuesJson}` |
+| `overallFeedback` | `{paperStart}` |
+
+Precedence: template override > block override > default. Inspect the
+defaults with `defaultPromptTemplates()` / `DEFAULT_PROMPT_BLOCKS` and use
+`resolvePromptTemplates(overrides)` to preview the effective prompts.
+
+⚠️ If you rewrite a template that asks for JSON (`deepCheck*`, `zeroShot`,
+`largePaperChunk`, `consolidation`), keep the requested output shape —
+items with `title` / `quote` / `explanation` / `type` — or the built-in
+parser won't extract comments. `technicalFilter` must keep the yes/no
+answer contract.
 
 ## Cost tracking
 

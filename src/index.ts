@@ -69,6 +69,17 @@ export {
   type ResolvedProvider,
 } from "./client.js";
 
+// Prompts (customizable)
+export {
+  DEFAULT_PROMPT_BLOCKS,
+  defaultPromptTemplates,
+  interpolate,
+  resolvePromptTemplates,
+  type PromptBlocks,
+  type PromptOverrides,
+  type PromptTemplates,
+} from "./prompts.js";
+
 // Utilities
 export {
   clearPricingCache,
