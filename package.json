@@ -1,0 +1,65 @@
+{
+  "name": "reviewer2",
+  "version": "0.1.0",
+  "description": "AI-powered academic paper reviewer. TypeScript port of OpenAIReview: multi-provider LLM review pipeline that returns structured, visualization-ready JSON.",
+  "license": "MIT",
+  "author": "Harry Wang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harrywang/reviewer2.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./steps": {
+      "types": "./dist/steps.d.ts",
+      "import": "./dist/steps.js",
+      "require": "./dist/steps.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "js-tiktoken": "^1.0.15",
+    "mammoth": "^1.8.0",
+    "openai": "^5.15.0",
+    "pdf-lib": "^1.17.1",
+    "unpdf": "^1.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.8"
+  },
+  "keywords": [
+    "ai",
+    "paper-review",
+    "peer-review",
+    "llm",
+    "openai",
+    "openrouter",
+    "anthropic",
+    "gemini",
+    "academic"
+  ]
+}
