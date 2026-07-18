@@ -512,6 +512,15 @@ top of that, reviewer2 adds what a Node/TypeScript web app needs:
   `zero_shot` (`concurrency` option); the original runs strictly
   sequentially.
 
+## Agent skill
+
+Prefer running reviews inside an AI coding agent instead of integrating the
+library? **[harrywang/reviewer2-skill](https://github.com/harrywang/reviewer2-skill)**
+packages the same review pipeline as an agent skill for Claude Code, Cursor,
+Codex, and others — install with `npx skills add harrywang/reviewer2-skill`,
+then run `/reviewer2 paper.pdf`. It produces the same viz-compatible JSON and
+bundles a local web viewer.
+
 ## Credits
 
 reviewer2 is a TypeScript port of
