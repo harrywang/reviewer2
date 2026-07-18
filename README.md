@@ -1,12 +1,32 @@
 # reviewer2
 
 AI-powered academic paper reviewer for Node/TypeScript — the reviewer #2
-every paper deserves. A port of
-[OpenAIReview](https://github.com/ChicagoHAI/OpenAIReview) (Python) designed
-for web-app integration: every pipeline returns structured,
-**visualization-ready JSON**, and the long-running review is exposed as
-JSON-safe steps that drop into [Inngest](https://www.inngest.com/) (or any
-durable-execution runtime).
+every paper deserves. Based on
+[OpenAIReview](https://github.com/ChicagoHAI/OpenAIReview) (Python),
+redesigned for web-app integration. On top of the original it adds:
+
+- **Built for web apps** — headless and JSON-first: every review returns
+  visualization-ready JSON you can render directly; no CLI, no result files
+  to manage.
+- **Survives long reviews** — a thorough review can run for an hour; the
+  pipeline breaks into durable, retryable steps that drop into
+  [Inngest](https://www.inngest.com/) (or any background-job runtime), with
+  live progress updates and cancellation.
+- **Any LLM provider** — OpenAI, OpenRouter, Anthropic, or Gemini out of
+  the box, including per-user API keys for multi-tenant apps.
+- **Easy prompt customization** — swap the review criteria, the tone, or
+  entire prompts with plain-string overrides, and keep named presets per
+  journal or track.
+- **Cost tracking with live pricing** — every review reports what it cost
+  in dollars, and you can pull current per-model prices from LiteLLM or
+  OpenRouter instead of relying on a static table.
+- **Papers from anywhere, running anywhere** — beyond the original's local
+  files and arXiv links: any file URL (including presigned S3/GCS links) and
+  in-memory buffers, parsed in pure JS so it runs on serverless with no
+  system dependencies.
+
+See [What reviewer2 adds on top of OpenAIReview](#what-reviewer2-adds-on-top-of-openaireview)
+for the full list.
 
 ## Install
 
@@ -466,8 +486,8 @@ npm run typecheck
 
 ## What reviewer2 adds on top of OpenAIReview
 
-The review pipeline, prompts, and output contract are a faithful port. On
-top of that, reviewer2 adds what a Node/TypeScript web app needs:
+The review pipeline, default prompts, and output contract are a faithful
+port. On top of that, reviewer2 adds what a Node/TypeScript web app needs:
 
 **Integration & API**
 - **JSON-first API** — `reviewPaper()` returns the viz-compatible JSON
@@ -482,6 +502,14 @@ top of that, reviewer2 adds what a Node/TypeScript web app needs:
   (`prepared` / `passage` / `consolidation` / `done`) instead of stdout
   prints, ready to drive a progress UI.
 - **`AbortSignal` cancellation** through the client, parsers, and methods.
+
+**Prompts**
+- **Customizable prompts** — every prompt is overridable via the
+  [`prompts` option](#customizing-prompts), at two levels (shared blocks
+  like `checkCriteria`, or whole templates); the original's prompts are
+  fixed module constants. Overrides are plain strings — JSON-safe, so
+  named presets can live in a database (per user, journal, or track) and
+  pass through Inngest step boundaries.
 
 **Providers**
 - **OpenAI as the default provider** (the original prefers OpenRouter),
