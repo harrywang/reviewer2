@@ -106,9 +106,8 @@ reviewer2 is based on
 port, but a TypeScript reimplementation that follows its review pipeline
 design (progressive summary-based review, deep-check prompts,
 consolidation), prompt set, and fuzzy quote-to-paragraph anchoring, then
-extends it substantially for web-app use (see
-[what reviewer2 adds](docs/comparison.md)). The reference viewer
-(`examples/viz/index.html`) is taken directly from the original.
+extends it for web-app use (see
+[what reviewer2 adds](docs/comparison.md)).
 
 ## License
 

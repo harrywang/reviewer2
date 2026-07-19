@@ -1,6 +1,6 @@
 {
   "name": "reviewer2",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "AI-powered academic paper reviewer based on OpenAIReview: multi-provider LLM review pipeline with reference accuracy checking, returning structured, visualization-ready JSON.",
   "license": "MIT",
   "author": "Harry Wang",
