@@ -4,11 +4,18 @@ import { computeCost, type PricingTable } from "./cost.js";
 import { reviewLocal } from "./methods/local.js";
 import { reviewProgressive, type ProgressiveOptions } from "./methods/progressive.js";
 import { reviewZeroShot } from "./methods/zeroShot.js";
+import { warnPromptOverrides } from "./prompts.js";
+import {
+  reviewReferences,
+  type CheckedReference,
+  type ReferenceCheckOptions,
+} from "./refcheck/index.js";
 import { splitIntoParagraphs } from "./textutils.js";
 import type {
   PaperCommentJson,
   PaperMethodJson,
   PaperReviewJson,
+  ReferenceCheckStats,
   ReviewMethod,
   ReviewOptions,
   ReviewResult,
@@ -106,6 +113,14 @@ export interface ReviewPaperOptions extends ProgressiveOptions {
   title?: string;
   /** Pricing table for cost_usd (e.g. from fetchLivePricing). Default: static table. */
   pricing?: PricingTable;
+  /**
+   * Verify bibliography entries against bibliographic databases (Crossref,
+   * OpenAlex, arXiv — keyless) to catch hallucinated or inaccurate
+   * references. Default OFF: when false, no extra LLM or HTTP calls are made.
+   */
+  checkReferences?: boolean;
+  /** Tuning for the reference check (sources, mailto, thresholds, model...). */
+  references?: ReferenceCheckOptions;
 }
 
 export interface ReviewPaperOutput {
@@ -115,6 +130,19 @@ export interface ReviewPaperOutput {
   result: ReviewResult;
   /** Pre-consolidation result (progressive only). */
   fullResult?: ReviewResult;
+  /**
+   * Reference check result (only when checkReferences is true). Its token
+   * usage and cost are tracked separately from the content review — it also
+   * appears as its own method block ("reference_check__<model>") in `paper`.
+   */
+  referenceResult?: ReviewResult;
+  /** Reference check accounting (per-source API calls, verdict counts). */
+  referenceStats?: ReferenceCheckStats;
+  /**
+   * Per-entry reference check breakdown in bibliography order, including the
+   * matched database record and its link for verified/mismatched entries.
+   */
+  checkedReferences?: CheckedReference[];
 }
 
 /**
@@ -127,6 +155,7 @@ export async function reviewPaper(
   documentText: string,
   options: ReviewPaperOptions = {},
 ): Promise<ReviewPaperOutput> {
+  warnPromptOverrides(options.prompts);
   const method = options.method ?? "progressive";
   const title =
     options.title ??
@@ -157,8 +186,19 @@ export async function reviewPaper(
     }
   }
 
+  // Opt-in reference accuracy check — separate result, separate cost.
+  let referenceResult: ReviewResult | undefined;
+  let referenceStats: ReferenceCheckStats | undefined;
+  let checkedReferences: CheckedReference[] | undefined;
+  if (options.checkReferences) {
+    const refCheck = await reviewReferences(slug, documentText, options);
+    referenceResult = refCheck.result;
+    referenceStats = refCheck.stats;
+    checkedReferences = refCheck.references;
+  }
+
   const paragraphs = splitIntoParagraphs(documentText);
-  const results = fullResult ? [result, fullResult] : [result];
+  const results = [result, ...(fullResult ? [fullResult] : []), ...(referenceResult ? [referenceResult] : [])];
   const paper = buildPaperJson({
     slug,
     title,
@@ -168,5 +208,5 @@ export async function reviewPaper(
     pricing: options.pricing,
   });
 
-  return { paper, result, fullResult };
+  return { paper, result, fullResult, referenceResult, referenceStats, checkedReferences };
 }

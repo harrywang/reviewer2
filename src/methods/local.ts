@@ -11,6 +11,7 @@ import {
   splitIntoParagraphs,
 } from "../textutils.js";
 import type { ReviewComment, ReviewOptions, ReviewResult } from "../types.js";
+import { addUsage } from "../usage.js";
 import { chatOptionsFrom, resolveCurrentDate, resolveModel } from "./shared.js";
 
 export async function reviewLocal(
@@ -76,8 +77,7 @@ export async function reviewLocal(
   const allComments: ReviewComment[] = [];
   for (const { comments, usage } of perChunk) {
     result.model = usage.model;
-    result.totalPromptTokens += usage.promptTokens;
-    result.totalCompletionTokens += usage.completionTokens;
+    addUsage(result, usage);
     allComments.push(...comments);
   }
   result.comments = allComments;
@@ -89,8 +89,7 @@ export async function reviewLocal(
     { ...chatOpts, maxTokens: 2048 },
   );
   result.overallFeedback = feedback.trim();
-  result.totalPromptTokens += usage.promptTokens;
-  result.totalCompletionTokens += usage.completionTokens;
+  addUsage(result, usage);
 
   await options.onProgress?.({ stage: "done", totalComments: result.comments.length });
   return result;

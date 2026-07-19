@@ -128,7 +128,7 @@ describe("template overrides", () => {
 });
 
 describe("resolvePromptTemplates / defaults export", () => {
-  it("exposes all eight templates", () => {
+  it("exposes all ten templates", () => {
     const templates = defaultPromptTemplates();
     expect(Object.keys(templates).sort()).toEqual([
       "consolidation",
@@ -136,6 +136,8 @@ describe("resolvePromptTemplates / defaults export", () => {
       "deepCheckProgressive",
       "largePaperChunk",
       "overallFeedback",
+      "referenceExtraction",
+      "referenceVerdict",
       "summaryUpdate",
       "technicalFilter",
       "zeroShot",

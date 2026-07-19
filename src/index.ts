@@ -69,12 +69,58 @@ export {
   type ResolvedProvider,
 } from "./client.js";
 
+// Reference accuracy check (opt-in)
+export {
+  adjudicateReference,
+  arxivIdFromDoi,
+  arxivSource,
+  authorOverlap,
+  buildReferenceSources,
+  BUILTIN_SOURCES,
+  candidateLink,
+  checkReference,
+  classifyReference,
+  crossrefSource,
+  DEFAULT_MATCH_THRESHOLDS,
+  extractReferences,
+  findOverflowCitations,
+  findReferencesSection,
+  lookupReferenceCandidates,
+  normalizeArxivId,
+  normalizeDoi,
+  normalizeTitle,
+  openalexSource,
+  reviewReferences,
+  scoreCandidate,
+  semanticScholarSource,
+  titleSimilarity,
+  type AdjudicationOutput,
+  type CheckedReference,
+  type ExtractedReference,
+  type ExtractReferencesOutput,
+  type LookupOutput,
+  type MatchedRecord,
+  type MatchResult,
+  type MatchThresholds,
+  type ReferenceCandidate,
+  type ReferenceCheckOptions,
+  type ReferenceCheckOutput,
+  type ReferenceKind,
+  type ReferenceSource,
+  type ReviewReferencesOptions,
+  type SourceContext,
+} from "./refcheck/index.js";
+
 // Prompts (customizable)
 export {
   DEFAULT_PROMPT_BLOCKS,
   defaultPromptTemplates,
   interpolate,
+  referenceExtractionPrompt,
+  referenceVerdictPrompt,
   resolvePromptTemplates,
+  validatePromptOverrides,
+  warnPromptOverrides,
   type PromptBlocks,
   type PromptOverrides,
   type PromptTemplates,
@@ -92,6 +138,7 @@ export {
   type PricingTable,
 } from "./cost.js";
 export { countTokens, truncateText, chunkText } from "./tokens.js";
+export { addUsage, type UsageAccumulator } from "./usage.js";
 export {
   assignParagraphIndices,
   getWindowContext,
@@ -104,6 +151,7 @@ export {
 export {
   parseCommentsFromList,
   parseCommentsFromResponse,
+  parseFirstJsonValue,
   parseReviewResponse,
 } from "./parsing.js";
 
@@ -118,6 +166,8 @@ export type {
   ProviderConfig,
   ProviderName,
   ReasoningEffort,
+  ReferenceCheckStats,
+  ReferenceStatus,
   ReviewComment,
   ReviewMethod,
   ReviewOptions,

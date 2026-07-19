@@ -32,6 +32,7 @@ import {
 } from "../textutils.js";
 import { countTokens } from "../tokens.js";
 import type { ReviewComment, ReviewOptions, ReviewResult, TokenUsage } from "../types.js";
+import { addUsage } from "../usage.js";
 import { chatOptionsFrom, resolveCurrentDate, resolveModel } from "./shared.js";
 
 /* ------------------------------------------------------------------ */
@@ -264,8 +265,7 @@ export async function reviewProgressive(
     // Optional pre-filter
     if (options.skipNontechnical) {
       const { technical, usage } = await isTechnicalPassage(plan.passages[idx].text, options);
-      result.totalPromptTokens += usage.promptTokens;
-      result.totalCompletionTokens += usage.completionTokens;
+      addUsage(result, usage, result.model);
       if (!technical) {
         // Still update the summary for skipped passages (may hold definitions)
         const summaryResp = await chat(
@@ -283,8 +283,7 @@ export async function reviewProgressive(
           ],
           { ...chatOptionsFrom(options), maxTokens: 3000 },
         );
-        result.totalPromptTokens += summaryResp.usage.promptTokens;
-        result.totalCompletionTokens += summaryResp.usage.completionTokens;
+        addUsage(result, summaryResp.usage, result.model);
         runningSummary = summaryResp.text.trim();
         continue;
       }
@@ -296,8 +295,7 @@ export async function reviewProgressive(
       runningSummary,
       options,
     });
-    result.totalPromptTokens += step.usage.promptTokens;
-    result.totalCompletionTokens += step.usage.completionTokens;
+    addUsage(result, step.usage, result.model);
     allComments.push(...step.comments);
     runningSummary = step.updatedSummary;
 
@@ -314,14 +312,12 @@ export async function reviewProgressive(
   await options.onProgress?.({ stage: "overall_feedback" });
   const feedback = await generateOverallFeedback(documentContent, options);
   result.overallFeedback = feedback.feedback;
-  result.totalPromptTokens += feedback.usage.promptTokens;
-  result.totalCompletionTokens += feedback.usage.completionTokens;
+  addUsage(result, feedback.usage, result.model);
 
   // Consolidation pass
   await options.onProgress?.({ stage: "consolidation", before: allComments.length });
   const consolidated = await consolidateComments(allComments, options);
-  result.totalPromptTokens += consolidated.usage.promptTokens;
-  result.totalCompletionTokens += consolidated.usage.completionTokens;
+  addUsage(result, consolidated.usage, result.model);
   result.comments = consolidated.comments;
   await options.onProgress?.({
     stage: "consolidation",

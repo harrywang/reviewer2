@@ -7,6 +7,7 @@ import { parseReviewResponse } from "../parsing.js";
 import { assignParagraphIndices } from "../textutils.js";
 import { chunkText, countTokens } from "../tokens.js";
 import type { ReviewComment, ReviewOptions, ReviewResult } from "../types.js";
+import { addUsage } from "../usage.js";
 import { chatOptionsFrom, resolveCurrentDate, resolveModel } from "./shared.js";
 
 const MAX_TOKENS_SINGLE = 100_000; // use a single prompt if the paper fits
@@ -44,8 +45,7 @@ export async function reviewZeroShot(
       maxTokens: 8192,
     });
     result.model = usage.model;
-    result.totalPromptTokens += usage.promptTokens;
-    result.totalCompletionTokens += usage.completionTokens;
+    addUsage(result, usage);
     const { overallFeedback, comments } = parseReviewResponse(text);
     result.overallFeedback = overallFeedback;
     result.comments = comments;
@@ -88,8 +88,7 @@ export async function reviewZeroShot(
     const allComments: ReviewComment[] = [];
     for (const { parsed, usage } of chunkResults) {
       result.model = usage.model;
-      result.totalPromptTokens += usage.promptTokens;
-      result.totalCompletionTokens += usage.completionTokens;
+      addUsage(result, usage);
       if (parsed.overallFeedback) overallParts.push(parsed.overallFeedback);
       allComments.push(...parsed.comments);
     }

@@ -189,3 +189,22 @@ export function parseReviewResponse(response: string): {
 export function parseCommentsFromResponse(response: string): ReviewComment[] {
   return parseReviewResponse(response).comments;
 }
+
+/**
+ * Find and parse the first balanced JSON value ({...} or [...]) in an LLM
+ * response. Strips markdown fences; no schema filtering (unlike scanForJson).
+ */
+export function parseFirstJsonValue(text: string): unknown | undefined {
+  const t = text
+    .trim()
+    .replace(/^```(?:json)?\s*/, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch !== "{" && ch !== "[") continue;
+    const value = tryParsePrefix(t, i);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}

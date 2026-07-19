@@ -38,6 +38,10 @@ export interface PromptBlocks {
    * title/quote/explanation/type — keep those field names.
    */
   jsonArrayOutput?: string;
+  /** Reference check: what counts as a metadata mismatch. */
+  referenceMatchCriteria?: string;
+  /** Reference check: what to be lenient about when comparing records. */
+  referenceLeniency?: string;
 }
 
 /**
@@ -49,6 +53,8 @@ export interface PromptBlocks {
  * - technicalFilter: {passage} — the model must answer only "yes" or "no"
  * - consolidation:   {issuesJson}
  * - overallFeedback: {paperStart}
+ * - referenceExtraction: {referencesText} {ocrCaveat}
+ * - referenceVerdict:    {referenceJson} {candidatesJson}
  */
 export interface PromptTemplates {
   deepCheck?: string;
@@ -59,6 +65,8 @@ export interface PromptTemplates {
   technicalFilter?: string;
   consolidation?: string;
   overallFeedback?: string;
+  referenceExtraction?: string;
+  referenceVerdict?: string;
 }
 
 export interface PromptOverrides {
@@ -115,6 +123,18 @@ even assuming the most plausible intended symbol.`,
 - "explanation": deep reasoning — what you initially thought, whether context resolves it, and what specifically remains problematic
 - "type": "technical" or "logical"
 `,
+
+  referenceMatchCriteria: `A citation is a MISMATCH when, compared to the database record for the same work:
+1. The publication year is off by more than one year
+2. The author list is wrong: a different first author, invented co-authors, or most authors missing
+3. The venue is a different journal or conference entirely (not just an abbreviation or renaming)
+4. The title differs materially in meaning (not just formatting or subtitle truncation)`,
+
+  referenceLeniency: `Be lenient with:
+- arXiv preprint vs. published version: venue differences and a one-year gap are normal
+- "et al." truncation of long author lists
+- Abbreviated or renamed venues (e.g. "NeurIPS" vs "Advances in Neural Information Processing Systems")
+- Formatting, capitalization, diacritics, and LaTeX or OCR artifacts`,
 };
 
 /** Kept out of PromptBlocks on purpose: these lines are structural. */
@@ -293,6 +313,50 @@ and most significant issues.
 PAPER (first 8000 characters):
 {paperStart}
 `,
+
+    referenceExtraction: `You are extracting bibliography entries from an academic paper's references section.
+{ocrCaveat}
+REFERENCES SECTION:
+{referencesText}
+
+---
+
+Extract EVERY entry. Copy each field exactly as written — do not invent, correct, or complete anything.
+
+Return ONLY a JSON array. Each item:
+- "label": the entry's printed label (e.g. "12" from "[12]", or "Smith2020"), or null
+- "raw": the complete verbatim text of the entry
+- "title": the cited work's title, or null
+- "authors": array of author names as written (e.g. ["J. Smith", "A. Doe"])
+- "year": publication year as a number, or null
+- "venue": journal, conference, or publisher, or null
+- "doi": the DOI if printed (e.g. "10.1234/abc"), or null
+- "arxiv_id": the arXiv identifier if printed (e.g. "2301.12345"), or null
+- "kind": "paper" | "book" | "web" | "thesis" | "software" | "other"`,
+
+    referenceVerdict: `You are verifying one bibliography entry from an academic paper against records \
+retrieved from real bibliographic databases. The records below are ground truth.
+
+ENTRY AS CITED IN THE PAPER:
+{referenceJson}
+
+DATABASE RECORDS RETRIEVED:
+{candidatesJson}
+
+---
+
+${b.referenceMatchCriteria}
+
+${b.referenceLeniency}
+
+Compare the entry ONLY against the records above — do not rely on your own knowledge of the literature.
+
+Return ONLY a JSON object:
+{"verdict": "verified" | "mismatch" | "not_found", "explanation": "one or two sentences citing the specific record and field(s)"}
+
+- "verified": one record is clearly the cited work and the citation's metadata agrees with it
+- "mismatch": one record is clearly the cited work, but the citation's metadata is wrong — name the exact field(s) and correct value(s)
+- "not_found": none of the records are the cited work`,
   };
 }
 
@@ -402,6 +466,84 @@ export function consolidationPrompt(issuesJson: string, overrides?: PromptOverri
 export function overallFeedbackPrompt(paperStart: string, overrides?: PromptOverrides): string {
   const t = resolvePromptTemplates(overrides);
   return interpolate(t.overallFeedback, { paperStart });
+}
+
+export function referenceExtractionPrompt(args: {
+  referencesText: string;
+  ocr?: boolean;
+  overrides?: PromptOverrides;
+}): string {
+  const t = resolvePromptTemplates(args.overrides);
+  return interpolate(t.referenceExtraction, {
+    referencesText: args.referencesText,
+    ocrCaveat: resolveOcrCaveat(args.ocr, args.overrides),
+  });
+}
+
+export function referenceVerdictPrompt(args: {
+  referenceJson: string;
+  candidatesJson: string;
+  overrides?: PromptOverrides;
+}): string {
+  const t = resolvePromptTemplates(args.overrides);
+  return interpolate(t.referenceVerdict, {
+    referenceJson: args.referenceJson,
+    candidatesJson: args.candidatesJson,
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Override validation                                                 */
+/* ------------------------------------------------------------------ */
+
+/** Placeholders a custom template must contain for the pipeline to work. */
+const REQUIRED_PLACEHOLDERS: Record<keyof Required<PromptTemplates>, string[]> = {
+  deepCheck: ["context", "passage"],
+  deepCheckProgressive: ["context", "passage"],
+  zeroShot: ["paperText"],
+  largePaperChunk: ["chunkText"],
+  summaryUpdate: ["currentSummary", "passageText"],
+  technicalFilter: ["passage"],
+  consolidation: ["issuesJson"],
+  overallFeedback: ["paperStart"],
+  referenceExtraction: ["referencesText"],
+  referenceVerdict: ["referenceJson", "candidatesJson"],
+};
+
+/**
+ * Validate prompt overrides: unknown template names and custom templates
+ * missing a required placeholder (the model would silently receive a prompt
+ * without its input data). Returns human-readable warnings; empty = OK.
+ */
+export function validatePromptOverrides(overrides?: PromptOverrides): string[] {
+  const warnings: string[] = [];
+  for (const [name, template] of Object.entries(overrides?.templates ?? {})) {
+    if (typeof template !== "string") continue;
+    const required = REQUIRED_PLACEHOLDERS[name as keyof PromptTemplates];
+    if (!required) {
+      warnings.push(
+        `unknown prompt template '${name}' — known templates: ${Object.keys(REQUIRED_PLACEHOLDERS).join(", ")}`,
+      );
+      continue;
+    }
+    for (const ph of required) {
+      if (!template.includes(`{${ph}}`)) {
+        warnings.push(`prompt template '${name}' is missing required placeholder {${ph}}`);
+      }
+    }
+  }
+  return warnings;
+}
+
+const warnedOverrides = new WeakSet<object>();
+
+/** console.warn each validation warning, once per overrides object. */
+export function warnPromptOverrides(overrides?: PromptOverrides): void {
+  if (!overrides || warnedOverrides.has(overrides)) return;
+  warnedOverrides.add(overrides);
+  for (const warning of validatePromptOverrides(overrides)) {
+    console.warn(`reviewer2: ${warning}`);
+  }
 }
 
 /** Default OCR caveat text (kept as a named export for convenience). */

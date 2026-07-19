@@ -56,13 +56,41 @@ export {
 export {
   DEFAULT_PROMPT_BLOCKS,
   defaultPromptTemplates,
+  validatePromptOverrides,
   type PromptBlocks,
   type PromptOverrides,
   type PromptTemplates,
 } from "./prompts.js";
 export { splitIntoParagraphs } from "./textutils.js";
+export { addUsage, type UsageAccumulator } from "./usage.js";
+
+// Reference check steps: each is plain-JSON in/out, so a durable runtime can
+// wrap extract → per-reference check → (optional) adjudication as retryable
+// steps and assemble the ReviewResult itself, or run reviewReferences whole.
+export {
+  adjudicateReference,
+  checkReference,
+  classifyReference,
+  extractReferences,
+  findOverflowCitations,
+  findReferencesSection,
+  lookupReferenceCandidates,
+  reviewReferences,
+  type CheckedReference,
+  type ExtractedReference,
+  type ExtractReferencesOutput,
+  type MatchedRecord,
+  type ReferenceCandidate,
+  type ReferenceCheckOptions,
+  type ReferenceCheckOutput,
+  type ReferenceSource,
+  type ReviewReferencesOptions,
+} from "./refcheck/index.js";
+
 export type {
   PaperReviewJson,
+  ReferenceCheckStats,
+  ReferenceStatus,
   ReviewComment,
   ReviewOptions,
   ReviewResult,

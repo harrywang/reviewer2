@@ -1,6 +1,6 @@
 /** Data models for the reviewer. Mirrors the Python OpenAIReview JSON contract. */
 
-export type CommentType = "technical" | "logical";
+export type CommentType = "technical" | "logical" | "reference";
 
 /** A comment (issue) found by the reviewer. */
 export interface ReviewComment {
@@ -31,8 +31,39 @@ export interface ReviewResult {
   overallFeedback: string;
   totalPromptTokens: number;
   totalCompletionTokens: number;
+  /**
+   * Per-model token breakdown. Present when the run tracked usage via
+   * addUsage(); lets computeCost price mixed-model runs exactly.
+   */
+  usageByModel?: Record<string, TokenUsage>;
   model: string;
   reasoningEffort?: ReasoningEffort | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reference accuracy check                                            */
+/* ------------------------------------------------------------------ */
+
+/** Outcome of checking one bibliography entry against the databases. */
+export type ReferenceStatus =
+  | "verified" // a matching record was found and metadata agrees
+  | "mismatch" // the work exists but the citation's metadata is wrong
+  | "not_found" // no plausible record in any source — possible hallucination
+  | "unverifiable" // books/URLs/theses etc., or all lookups failed — never flagged
+  | "ambiguous"; // couldn't decide (adjudication off or inconclusive) — never flagged
+
+/** Non-LLM accounting for a reference check run. */
+export interface ReferenceCheckStats {
+  entries: number;
+  verified: number;
+  mismatched: number;
+  notFound: number;
+  unverifiable: number;
+  ambiguous: number;
+  /** How many entries needed the LLM adjudication tie-breaker. */
+  adjudicated: number;
+  /** HTTP requests made per source (includes retries) — quota visibility. */
+  apiCallsBySource: Record<string, number>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -102,6 +133,9 @@ export type ReviewProgressEvent =
   | { stage: "chunk"; current: number; total: number; newComments: number; totalComments: number }
   | { stage: "overall_feedback" }
   | { stage: "consolidation"; before: number; after?: number }
+  | { stage: "references_extract"; entries: number; sectionFound: boolean }
+  | { stage: "reference_lookup"; current: number; total: number; status: ReferenceStatus }
+  | { stage: "references_done"; stats: ReferenceCheckStats }
   | { stage: "done"; totalComments: number };
 
 export type ProgressCallback = (event: ReviewProgressEvent) => void | Promise<void>;

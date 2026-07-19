@@ -1,6 +1,6 @@
 /** Cost estimation: static pricing table + optional live pricing sources. */
 
-import type { ReviewResult } from "./types.js";
+import type { ReviewResult, TokenUsage } from "./types.js";
 
 export interface Pricing {
   /** USD per 1M prompt tokens. */
@@ -55,12 +55,30 @@ function pricingFor(model: string, table: PricingTable): Pricing {
   return best ?? DEFAULT_COST;
 }
 
-/** Estimate USD cost of a review. Pass a live table for fresh prices. */
+/**
+ * Estimate USD cost of a review. Pass a live table for fresh prices.
+ * When the result carries a per-model breakdown (usageByModel), each model's
+ * tokens are priced at that model's rate — exact for mixed-model runs.
+ */
 export function computeCost(
-  result: Pick<ReviewResult, "model" | "totalPromptTokens" | "totalCompletionTokens">,
+  result: Pick<ReviewResult, "model" | "totalPromptTokens" | "totalCompletionTokens"> & {
+    usageByModel?: Record<string, TokenUsage>;
+  },
   pricingTable?: PricingTable,
 ): number {
   const table = pricingTable ?? COST_PER_1M;
+
+  if (result.usageByModel && Object.keys(result.usageByModel).length) {
+    let total = 0;
+    for (const [model, usage] of Object.entries(result.usageByModel)) {
+      const p = pricingFor(model, table);
+      total +=
+        (usage.promptTokens / 1_000_000) * p.prompt +
+        (usage.completionTokens / 1_000_000) * p.completion;
+    }
+    return total;
+  }
+
   let pricing = pricingFor(result.model, table);
 
   // Blended "a+b" models (30/70 split), as in the Python original
