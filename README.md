@@ -456,8 +456,18 @@ minute end-to-end — one extraction call plus free database lookups
 
 How it works:
 
-1. **Extract** — one LLM call parses the references section into structured
-   entries (title, authors, year, venue, DOI, arXiv id), copied verbatim.
+1. **Extract** — the references section is located by a layered strategy,
+   cheapest first: a heading scan (tolerant of markdown, numbering,
+   letter-spaced OCR headings like `R E F E R E N C E S`, and common
+   non-English headings) → structural detection (a run of
+   bibliography-shaped lines: years, DOIs, `[n]` labels, author patterns) →
+   as a last resort, one small **LLM locator call** that quotes the first
+   entry verbatim. `referenceStats.sectionSource` reports which layer won
+   (`"heading" | "structural" | "llm" | "none"`); the locator's tokens are
+   tracked in the reference-check usage/cost like every other call, so the
+   extra cost — only incurred when deterministic locating fails — is always
+   visible. One LLM call then parses the section into structured entries
+   (title, authors, year, venue, DOI, arXiv id), copied verbatim.
 2. **Look up** — each entry is resolved against the databases by arXiv id,
    DOI, or title search (plain HTTP — no LLM, so nothing can be hallucinated
    here). Lookups run concurrently with retries and per-source call counting.

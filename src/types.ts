@@ -52,9 +52,14 @@ export type ReferenceStatus =
   | "unverifiable" // books/URLs/theses etc., or all lookups failed — never flagged
   | "ambiguous"; // couldn't decide (adjudication off or inconclusive) — never flagged
 
+/** How the references section was located. "llm" means the fallback locator
+ *  call ran (its tokens are included in the reference-check usage/cost). */
+export type ReferenceSectionSource = "heading" | "structural" | "llm" | "none";
+
 /** Non-LLM accounting for a reference check run. */
 export interface ReferenceCheckStats {
   entries: number;
+  sectionSource: ReferenceSectionSource;
   verified: number;
   mismatched: number;
   notFound: number;
@@ -133,7 +138,12 @@ export type ReviewProgressEvent =
   | { stage: "chunk"; current: number; total: number; newComments: number; totalComments: number }
   | { stage: "overall_feedback" }
   | { stage: "consolidation"; before: number; after?: number }
-  | { stage: "references_extract"; entries: number; sectionFound: boolean }
+  | {
+      stage: "references_extract";
+      entries: number;
+      sectionFound: boolean;
+      sectionSource: ReferenceSectionSource;
+    }
   | { stage: "reference_lookup"; current: number; total: number; status: ReferenceStatus }
   | { stage: "references_done"; stats: ReferenceCheckStats }
   | { stage: "done"; totalComments: number };

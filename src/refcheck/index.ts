@@ -53,7 +53,13 @@ import {
 } from "./types.js";
 
 export * from "./types.js";
-export { extractReferences, findReferencesSection, type ExtractReferencesOutput } from "./extract.js";
+export {
+  extractReferences,
+  findReferencesSection,
+  locateReferencesLlm,
+  type ExtractReferencesOutput,
+  type ReferencesSection,
+} from "./extract.js";
 export {
   arxivIdFromDoi,
   authorOverlap,
@@ -513,6 +519,7 @@ export async function reviewReferences(
   };
   const stats: ReferenceCheckStats = {
     entries: 0,
+    sectionSource: "none",
     verified: 0,
     mismatched: 0,
     notFound: 0,
@@ -525,10 +532,12 @@ export async function reviewReferences(
   const extraction = await extractReferences(documentText, effOptions);
   addUsage(result, extraction.usage, model);
   stats.entries = extraction.references.length;
+  stats.sectionSource = extraction.sectionSource;
   await options.onProgress?.({
     stage: "references_extract",
     entries: stats.entries,
     sectionFound: extraction.sectionFound,
+    sectionSource: extraction.sectionSource,
   });
 
   const sources = buildReferenceSources(refOpts);

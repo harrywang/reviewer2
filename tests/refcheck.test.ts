@@ -19,7 +19,7 @@ import {
   referenceVerdictPrompt,
   validatePromptOverrides,
 } from "../src/prompts.js";
-import { findReferencesSection } from "../src/refcheck/extract.js";
+import { extractReferences, findReferencesSection } from "../src/refcheck/extract.js";
 import {
   arxivIdFromDoi,
   authorOverlap,
@@ -130,6 +130,98 @@ describe("findReferencesSection", () => {
 
   it("returns null when there is no references section", () => {
     expect(findReferencesSection("Just a body with no bibliography.")).toBeNull();
+  });
+
+  it("finds letter-spaced OCR headings (R E F E R E N C E S)", () => {
+    const doc =
+      "Body text here.\n\nR E F E R E N C E S\n\n[1] A. Smith. Deep Widget Networks. Journal of Widgets, 2020.";
+    const section = findReferencesSection(doc);
+    expect(section?.source).toBe("heading");
+    expect(section?.text).toContain("[1] A. Smith");
+  });
+
+  it("finds numbered headings without punctuation and heading variants", () => {
+    const numbered = findReferencesSection(
+      "Intro.\n\n6 References\n\n[1] A. Smith. Deep Widget Networks. Journal of Widgets, 2020.",
+    );
+    expect(numbered?.source).toBe("heading");
+    const cited = findReferencesSection(
+      "Intro.\n\nREFERENCES CITED:\n\n[1] A. Smith. Deep Widget Networks. Journal of Widgets, 2020.",
+    );
+    expect(cited?.source).toBe("heading");
+  });
+
+  it("rejects a heading followed by non-bibliography text", () => {
+    expect(findReferencesSection("Body.\n\nReferences\n\nSee the appendix for details.")).toBeNull();
+  });
+
+  it("detects a bibliography structurally when the heading is missing", () => {
+    const body = "Plain body prose without citations. ".repeat(20);
+    const entries = Array.from(
+      { length: 6 },
+      (_, i) => `[${i + 1}] Author${i}, A. (20${10 + i}). Title ${i}. Journal of Things, ${i + 1}(2), 1-10.`,
+    ).join("\n");
+    const section = findReferencesSection(`${body}\n\n${entries}`);
+    expect(section?.source).toBe("structural");
+    expect(section?.text).toContain("[1] Author0");
+  });
+});
+
+describe("extractReferences LLM locator fallback", () => {
+  it("locates via one LLM call when deterministic locating fails, and tracks its cost", async () => {
+    const entryLine = "Smith, A. (2020). Deep Widget Networks. Journal of Widgets.";
+    // 3 author-year entries: too few for structural detection, no heading
+    const doc =
+      "Body prose without obvious citations. ".repeat(20) +
+      `\n\n${entryLine}\nJones, B. (2019). Fast Gadget Learning. GadgetConf.\nChen, C. (2021). Widget Theory. Widget Press.`;
+
+    chatMock.mockImplementation(async (messages: { content: string }[]) => {
+      const content = messages[0].content;
+      if (content.includes("final portion")) {
+        return {
+          text: entryLine,
+          usage: { promptTokens: 20, completionTokens: 5, model: "gpt-test" },
+          provider: "openai",
+        };
+      }
+      return {
+        text: JSON.stringify([
+          {
+            label: null,
+            raw: entryLine,
+            title: "Deep Widget Networks",
+            authors: ["A. Smith"],
+            year: 2020,
+            venue: "Journal of Widgets",
+            doi: null,
+            arxiv_id: null,
+            kind: "paper",
+          },
+        ]),
+        usage: { promptTokens: 100, completionTokens: 50, model: "gpt-test" },
+        provider: "openai",
+      };
+    });
+
+    expect(findReferencesSection(doc)).toBeNull();
+    const out = await extractReferences(doc);
+    expect(out.sectionSource).toBe("llm");
+    expect(out.references).toHaveLength(1);
+    // locator (20/5) + extraction (100/50) both tracked
+    expect(out.usage).toEqual({ promptTokens: 120, completionTokens: 55 });
+  });
+
+  it("gives up cleanly when the locator answers NONE", async () => {
+    chatMock.mockImplementation(async () => ({
+      text: "NONE",
+      usage: { promptTokens: 15, completionTokens: 2, model: "gpt-test" },
+      provider: "openai",
+    }));
+    const out = await extractReferences("Just a body with no bibliography.");
+    expect(out.sectionSource).toBe("none");
+    expect(out.references).toEqual([]);
+    expect(out.usage.promptTokens).toBe(15); // locator cost still tracked
+    expect(chatMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -628,6 +720,13 @@ beforeEach(() => {
         provider: "openai",
       };
     }
+    if (content.includes("final portion")) {
+      return {
+        text: "NONE",
+        usage: { promptTokens: 15, completionTokens: 2, model: "gpt-test" },
+        provider: "openai",
+      };
+    }
     // zero-shot content review
     return {
       text: JSON.stringify({ overall_feedback: "Solid paper.", comments: [] }),
@@ -646,6 +745,7 @@ describe("reviewReferences", () => {
     expect(result.method).toBe("reference_check");
     expect(stats).toMatchObject({
       entries: 3,
+      sectionSource: "heading",
       verified: 1,
       mismatched: 1,
       notFound: 1,
@@ -717,13 +817,16 @@ describe("reviewReferences", () => {
     expect(stages[stages.length - 1]).toBe("references_done");
   });
 
-  it("handles papers without a references section", async () => {
+  it("handles papers without a references section (one locator call, cost tracked)", async () => {
     const { result, stats } = await reviewReferences("no-refs", "Just body text.", {
       references: { fetchImpl: fakeFetch },
     });
     expect(stats.entries).toBe(0);
+    expect(stats.sectionSource).toBe("none");
     expect(result.comments).toEqual([]);
-    expect(chatMock).not.toHaveBeenCalled();
+    // Deterministic locating failed → exactly one LLM locator call, tracked
+    expect(chatMock).toHaveBeenCalledTimes(1);
+    expect(result.totalPromptTokens).toBe(15);
   });
 
   it("marks entries unverifiable instead of not_found when every source errors", async () => {

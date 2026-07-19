@@ -55,6 +55,7 @@ export interface PromptBlocks {
  * - overallFeedback: {paperStart}
  * - referenceExtraction: {referencesText} {ocrCaveat}
  * - referenceVerdict:    {referenceJson} {candidatesJson}
+ * - referenceLocator:    {documentTail} — must answer a verbatim line or NONE
  */
 export interface PromptTemplates {
   deepCheck?: string;
@@ -67,6 +68,7 @@ export interface PromptTemplates {
   overallFeedback?: string;
   referenceExtraction?: string;
   referenceVerdict?: string;
+  referenceLocator?: string;
 }
 
 export interface PromptOverrides {
@@ -321,7 +323,9 @@ REFERENCES SECTION:
 
 ---
 
-Extract EVERY entry. Copy each field exactly as written — do not invent, correct, or complete anything.
+Extract EVERY entry. Copy each field exactly as written — do not invent, correct, or complete anything. \
+If the text is not an actual reference list, return []. Never extract in-text \
+citations (e.g. "(Smith, 2020)" inside prose) as entries.
 
 Return ONLY a JSON array. Each item:
 - "label": the entry's printed label (e.g. "12" from "[12]", or "Smith2020"), or null
@@ -357,6 +361,18 @@ Return ONLY a JSON object:
 - "verified": one record is clearly the cited work and the citation's metadata agrees with it
 - "mismatch": one record is clearly the cited work, but the citation's metadata is wrong — name the exact field(s) and correct value(s)
 - "not_found": none of the records are the cited work`,
+
+    referenceLocator: `You are locating the reference list (bibliography) in the final portion of an academic document.
+
+DOCUMENT (final portion):
+{documentTail}
+
+---
+
+If this text contains the start of the reference list, return the EXACT first line of the FIRST \
+reference entry, copied verbatim (the entry itself, not the section heading).
+If no reference list appears here, return exactly: NONE
+Return only that single line, nothing else.`,
   };
 }
 
@@ -492,6 +508,14 @@ export function referenceVerdictPrompt(args: {
   });
 }
 
+export function referenceLocatorPrompt(args: {
+  documentTail: string;
+  overrides?: PromptOverrides;
+}): string {
+  const t = resolvePromptTemplates(args.overrides);
+  return interpolate(t.referenceLocator, { documentTail: args.documentTail });
+}
+
 /* ------------------------------------------------------------------ */
 /* Override validation                                                 */
 /* ------------------------------------------------------------------ */
@@ -508,6 +532,7 @@ const REQUIRED_PLACEHOLDERS: Record<keyof Required<PromptTemplates>, string[]> =
   overallFeedback: ["paperStart"],
   referenceExtraction: ["referencesText"],
   referenceVerdict: ["referenceJson", "candidatesJson"],
+  referenceLocator: ["documentTail"],
 };
 
 /**

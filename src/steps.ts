@@ -74,6 +74,7 @@ export {
   extractReferences,
   findOverflowCitations,
   findReferencesSection,
+  locateReferencesLlm,
   lookupReferenceCandidates,
   reviewReferences,
   type CheckedReference,
@@ -90,6 +91,7 @@ export {
 export type {
   PaperReviewJson,
   ReferenceCheckStats,
+  ReferenceSectionSource,
   ReferenceStatus,
   ReviewComment,
   ReviewOptions,
