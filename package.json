@@ -1,7 +1,7 @@
 {
   "name": "reviewer2",
   "version": "0.3.0",
-  "description": "AI-powered academic paper reviewer. TypeScript port of OpenAIReview: multi-provider LLM review pipeline that returns structured, visualization-ready JSON.",
+  "description": "AI-powered academic paper reviewer based on OpenAIReview: multi-provider LLM review pipeline with reference accuracy checking, returning structured, visualization-ready JSON.",
   "license": "MIT",
   "author": "Harry Wang",
   "repository": {

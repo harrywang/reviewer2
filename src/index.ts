@@ -1,7 +1,7 @@
 /**
  * reviewer2 — AI-powered academic paper reviewer.
  *
- * TypeScript port of OpenAIReview. Reviews a paper's text with a
+ * Based on OpenAIReview. Reviews a paper's text with a
  * multi-provider LLM pipeline and returns structured, visualization-ready
  * JSON ({ slug, title, paragraphs, methods }).
  */

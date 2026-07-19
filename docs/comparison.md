@@ -1,8 +1,9 @@
 # What reviewer2 adds on top of OpenAIReview
 
-The review pipeline, default prompts, and output contract are a faithful
-port of [OpenAIReview](https://github.com/ChicagoHAI/OpenAIReview). On top
-of that, reviewer2 adds what a Node/TypeScript web app needs.
+reviewer2 is based on
+[OpenAIReview](https://github.com/ChicagoHAI/OpenAIReview): the review
+pipeline design, default prompts, and output contract follow the original.
+On top of that, reviewer2 adds what a Node/TypeScript web app needs.
 Back to the [README](../README.md).
 
 **Integration & API**

@@ -100,13 +100,15 @@ bundles a local web viewer.
 
 ## Credits
 
-reviewer2 is a TypeScript port of
+reviewer2 is based on
 **[OpenAIReview](https://github.com/ChicagoHAI/OpenAIReview)** by
-[ChicagoHAI](https://github.com/ChicagoHAI) (MIT licensed), which originated
-the review pipeline design (progressive summary-based review, deep-check
-prompts, consolidation), the prompt set, the fuzzy quote-to-paragraph
-anchoring, and the reference viewer (`examples/viz/index.html` is taken
-directly from it).
+[ChicagoHAI](https://github.com/ChicagoHAI) (MIT licensed) — not a direct
+port, but a TypeScript reimplementation that follows its review pipeline
+design (progressive summary-based review, deep-check prompts,
+consolidation), prompt set, and fuzzy quote-to-paragraph anchoring, then
+extends it substantially for web-app use (see
+[what reviewer2 adds](docs/comparison.md)). The reference viewer
+(`examples/viz/index.html`) is taken directly from the original.
 
 ## License
 
