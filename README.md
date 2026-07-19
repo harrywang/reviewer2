@@ -449,8 +449,10 @@ checkedReferences;
 ```
 
 Rough expectations for a typical conference paper (~35 references): about a
-minute end-to-end and ≈ $0.10 with `gpt-5.2` — one extraction call plus
-free database lookups (adjudication calls only for ambiguous entries).
+minute end-to-end — one extraction call plus free database lookups
+(adjudication calls only for ambiguous entries). Approximate cost by model:
+≈ $0.21 with `gpt-5.6` (sol), ≈ $0.10 with `gpt-5.6-terra`, ≈ $0.04 with
+`gpt-5.6-luna`.
 
 How it works:
 
@@ -497,7 +499,18 @@ customizable like all others: blocks `referenceMatchCriteria` /
 ## Cost tracking
 
 `cost_usd` in the output is computed from a built-in static pricing table
-(USD per 1M tokens). For fresh prices, fetch a live table and pass it through:
+(USD per 1M tokens). Current OpenAI prices covered by the static table
+(as of July 2026, via LiteLLM's community pricing DB):
+
+| Model                     | Input $/1M | Output $/1M |
+| ------------------------- | ---------- | ----------- |
+| `gpt-5.6` / `gpt-5.6-sol` | 5.00       | 30.00       |
+| `gpt-5.6-terra`           | 2.50       | 15.00       |
+| `gpt-5.6-luna`            | 1.00       | 6.00        |
+
+(Other OpenAI, Anthropic, Gemini, and OpenRouter models are in the static
+table too — see `COST_PER_1M` in `src/cost.ts`.) For fresh prices, fetch a
+live table and pass it through:
 
 ```ts
 import { fetchLivePricing, reviewPaper } from "reviewer2";
