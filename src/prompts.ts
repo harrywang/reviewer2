@@ -80,12 +80,16 @@ export interface PromptOverrides {
 /* Default building blocks                                             */
 /* ------------------------------------------------------------------ */
 
+/** The shared reviewer opener, parameterized by what's being reviewed. Keeps
+ *  the passage / whole-paper / section variants from drifting apart. */
+const reviewerOpener = (subject: string): string =>
+  `You are a thoughtful reviewer ${subject}. ` +
+  `Today's date is {currentDate}. ` +
+  `Engage deeply with the material. For each potential issue, first try to understand the authors' ` +
+  `intent and check whether your concern is resolved by context before flagging it.`;
+
 export const DEFAULT_PROMPT_BLOCKS: Required<PromptBlocks> = {
-  reviewerPreamble:
-    `You are a thoughtful reviewer checking a passage from an academic paper. ` +
-    `Today's date is {currentDate}. ` +
-    `Engage deeply with the material. For each potential issue, first try to understand the authors' ` +
-    `intent and check whether your concern is resolved by context before flagging it.`,
+  reviewerPreamble: reviewerOpener("checking a passage from an academic paper"),
 
   checkCriteria: `Check for:
 1. Mathematical / formula errors: wrong formulas, sign errors, missing factors, incorrect derivations, subscript or index errors
@@ -204,12 +208,9 @@ ${b.jsonArrayOutput}`;
       `${b.doNotFlag}\n${DO_NOT_FLAG_CHUNKED_EXTRA}\n${DO_NOT_FLAG_PROGRESSIVE_EXTRA}`,
     ),
 
-    zeroShot: `You are a thoughtful reviewer reading the following academic paper. \
-Today's date is {currentDate}. \
-Engage deeply with the material. For each potential issue, first try to understand the authors' \
-intent and check whether your concern is resolved by context before flagging it.
+    zeroShot: `${reviewerOpener("reading the following academic paper")}
 
-Carefully ${b.checkCriteria.charAt(0).toLowerCase()}${b.checkCriteria.slice(1)}
+${b.checkCriteria}
 
 ${b.explanationStyle}
 
@@ -227,12 +228,9 @@ PAPER:
 {paperText}
 `,
 
-    largePaperChunk: `You are a thoughtful reviewer checking a section of an academic paper. \
-Today's date is {currentDate}. \
-Engage deeply with the material. For each potential issue, first try to understand the authors' \
-intent and check whether your concern is resolved by context before flagging it.
+    largePaperChunk: `${reviewerOpener("checking a section of an academic paper")}
 
-Carefully ${b.checkCriteria.charAt(0).toLowerCase()}${b.checkCriteria.slice(1)}
+${b.checkCriteria}
 
 ${b.explanationStyle}
 

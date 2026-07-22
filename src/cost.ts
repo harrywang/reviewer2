@@ -1,5 +1,6 @@
 /** Cost estimation: static pricing table + optional live pricing sources. */
 
+import { parseModelId } from "./modelId.js";
 import type { ReviewResult, TokenUsage } from "./types.js";
 
 export interface Pricing {
@@ -44,13 +45,13 @@ export const DEFAULT_COST: Pricing = { prompt: 5.0, completion: 25.0 };
  */
 function pricingFor(model: string, table: PricingTable): Pricing {
   if (table[model]) return table[model];
-  const short = model.includes("/") ? model.split("/").pop()! : model;
+  const short = parseModelId(model).bareId;
   if (table[short]) return table[short];
 
   let best: Pricing | undefined;
   let bestLen = 0;
   for (const [key, value] of Object.entries(table)) {
-    const keyShort = key.includes("/") ? key.split("/").pop()! : key;
+    const keyShort = parseModelId(key).bareId;
     if ((model.includes(key) || model.includes(keyShort)) && keyShort.length > bestLen) {
       best = value;
       bestLen = keyShort.length;
@@ -60,7 +61,9 @@ function pricingFor(model: string, table: PricingTable): Pricing {
 }
 
 /**
- * Estimate USD cost of a review. Pass a live table for fresh prices.
+ * Estimate USD cost of a review. Precedence per model:
+ *   1. provider-reported actual cost (usage.costUsd, e.g. OpenRouter) — authoritative
+ *   2. tokens × price table (pass a live table via fetchLivePricing for fresh prices)
  * When the result carries a per-model breakdown (usageByModel), each model's
  * tokens are priced at that model's rate — exact for mixed-model runs.
  */
@@ -75,6 +78,11 @@ export function computeCost(
   if (result.usageByModel && Object.keys(result.usageByModel).length) {
     let total = 0;
     for (const [model, usage] of Object.entries(result.usageByModel)) {
+      // Prefer the provider's actual billed cost when it reported one.
+      if (typeof usage.costUsd === "number") {
+        total += usage.costUsd;
+        continue;
+      }
       const p = pricingFor(model, table);
       total +=
         (usage.promptTokens / 1_000_000) * p.prompt +
