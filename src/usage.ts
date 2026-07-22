@@ -27,6 +27,9 @@ export function addUsage(
   const entry = (byModel[m] ??= { promptTokens: 0, completionTokens: 0 });
   entry.promptTokens += usage.promptTokens;
   entry.completionTokens += usage.completionTokens;
+  if (typeof usage.cachedPromptTokens === "number") {
+    entry.cachedPromptTokens = (entry.cachedPromptTokens ?? 0) + usage.cachedPromptTokens;
+  }
   if (typeof usage.costUsd === "number") {
     entry.costUsd = (entry.costUsd ?? 0) + usage.costUsd;
   }

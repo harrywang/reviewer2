@@ -22,6 +22,13 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   /**
+   * Cache-read (discounted) input tokens — a subset of promptTokens — when the
+   * provider reports them (OpenAI `usage.prompt_tokens_details.cached_tokens`;
+   * Anthropic/Gemini via their OpenAI-compatible endpoints). Priced at the
+   * cache-read rate so cost isn't overstated when prompt caching is active.
+   */
+  cachedPromptTokens?: number;
+  /**
    * Provider-reported actual cost in USD, when the API returns one (e.g.
    * OpenRouter `usage.cost`). Undefined for providers that return tokens only —
    * those are priced from the cost table instead. computeCost() prefers this
