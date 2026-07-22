@@ -140,6 +140,9 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
   });
   usage.promptTokens += deepCheck.usage.promptTokens;
   usage.completionTokens += deepCheck.usage.completionTokens;
+  if (typeof deepCheck.usage.cachedPromptTokens === "number") {
+    usage.cachedPromptTokens = (usage.cachedPromptTokens ?? 0) + deepCheck.usage.cachedPromptTokens;
+  }
   if (typeof deepCheck.usage.costUsd === "number") {
     usage.costUsd = (usage.costUsd ?? 0) + deepCheck.usage.costUsd;
   }
@@ -163,6 +166,9 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
   });
   usage.promptTokens += summaryStep.usage.promptTokens;
   usage.completionTokens += summaryStep.usage.completionTokens;
+  if (typeof summaryStep.usage.cachedPromptTokens === "number") {
+    usage.cachedPromptTokens = (usage.cachedPromptTokens ?? 0) + summaryStep.usage.cachedPromptTokens;
+  }
   if (typeof summaryStep.usage.costUsd === "number") {
     usage.costUsd = (usage.costUsd ?? 0) + summaryStep.usage.costUsd;
   }

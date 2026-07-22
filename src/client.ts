@@ -255,6 +255,12 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
 
         totalUsage.promptTokens += resp.usage?.prompt_tokens ?? 0;
         totalUsage.completionTokens += resp.usage?.completion_tokens ?? 0;
+        // Cache-read tokens (subset of prompt_tokens) — lets computeCost price
+        // the cached portion at the discounted rate instead of the full rate.
+        const cachedTokens = resp.usage?.prompt_tokens_details?.cached_tokens;
+        if (typeof cachedTokens === "number") {
+          totalUsage.cachedPromptTokens = (totalUsage.cachedPromptTokens ?? 0) + cachedTokens;
+        }
         // Provider-reported actual cost (e.g. OpenRouter usage.cost), when present.
         const reportedCost = (resp.usage as { cost?: number } | undefined)?.cost;
         if (typeof reportedCost === "number") {

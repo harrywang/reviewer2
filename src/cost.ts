@@ -8,6 +8,12 @@ export interface Pricing {
   prompt: number;
   /** USD per 1M completion tokens. */
   completion: number;
+  /**
+   * USD per 1M cache-read (discounted) input tokens, when the catalog provides
+   * it. Used to price the cached portion of the prompt so cost isn't overstated
+   * when prompt caching is active. Falls back to `prompt` when absent.
+   */
+  cacheRead?: number;
 }
 
 export type PricingTable = Record<string, Pricing>;
@@ -84,8 +90,14 @@ export function computeCost(
         continue;
       }
       const p = pricingFor(model, table);
+      // Cache-read tokens are a subset of promptTokens; price them at the
+      // (discounted) cache-read rate when known, the rest at the prompt rate.
+      const cached = usage.cachedPromptTokens ?? 0;
+      const uncached = Math.max(0, usage.promptTokens - cached);
+      const cacheReadRate = p.cacheRead ?? p.prompt;
       total +=
-        (usage.promptTokens / 1_000_000) * p.prompt +
+        (uncached / 1_000_000) * p.prompt +
+        (cached / 1_000_000) * cacheReadRate +
         (usage.completionTokens / 1_000_000) * p.completion;
     }
     return total;
@@ -144,7 +156,11 @@ async function fetchLitellmTable(signal?: AbortSignal): Promise<PricingTable> {
   if (!resp.ok) throw new Error(`LiteLLM pricing fetch failed: HTTP ${resp.status}`);
   const data = (await resp.json()) as Record<
     string,
-    { input_cost_per_token?: number; output_cost_per_token?: number }
+    {
+      input_cost_per_token?: number;
+      output_cost_per_token?: number;
+      cache_read_input_token_cost?: number;
+    }
   >;
   const table: PricingTable = {};
   for (const [model, spec] of Object.entries(data)) {
@@ -152,7 +168,10 @@ async function fetchLitellmTable(signal?: AbortSignal): Promise<PricingTable> {
     const input = spec?.input_cost_per_token;
     const output = spec?.output_cost_per_token;
     if (typeof input === "number" && typeof output === "number" && input >= 0 && output >= 0) {
-      table[model] = { prompt: input * 1_000_000, completion: output * 1_000_000 };
+      const entry: Pricing = { prompt: input * 1_000_000, completion: output * 1_000_000 };
+      const cacheRead = spec?.cache_read_input_token_cost;
+      if (typeof cacheRead === "number" && cacheRead >= 0) entry.cacheRead = cacheRead * 1_000_000;
+      table[model] = entry;
     }
   }
   return table;
@@ -162,7 +181,10 @@ async function fetchOpenRouterTable(signal?: AbortSignal): Promise<PricingTable>
   const resp = await fetch(OPENROUTER_URL, { signal });
   if (!resp.ok) throw new Error(`OpenRouter pricing fetch failed: HTTP ${resp.status}`);
   const data = (await resp.json()) as {
-    data?: { id?: string; pricing?: { prompt?: string; completion?: string } }[];
+    data?: {
+      id?: string;
+      pricing?: { prompt?: string; completion?: string; input_cache_read?: string };
+    }[];
   };
   const table: PricingTable = {};
   for (const model of data.data ?? []) {
@@ -170,7 +192,10 @@ async function fetchOpenRouterTable(signal?: AbortSignal): Promise<PricingTable>
     const prompt = Number.parseFloat(model.pricing?.prompt ?? "");
     const completion = Number.parseFloat(model.pricing?.completion ?? "");
     if (Number.isFinite(prompt) && Number.isFinite(completion) && prompt >= 0 && completion >= 0) {
-      table[model.id] = { prompt: prompt * 1_000_000, completion: completion * 1_000_000 };
+      const entry: Pricing = { prompt: prompt * 1_000_000, completion: completion * 1_000_000 };
+      const cacheRead = Number.parseFloat(model.pricing?.input_cache_read ?? "");
+      if (Number.isFinite(cacheRead) && cacheRead >= 0) entry.cacheRead = cacheRead * 1_000_000;
+      table[model.id] = entry;
     }
   }
   return table;
