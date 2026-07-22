@@ -4,6 +4,7 @@
  */
 
 import OpenAI from "openai";
+import { parseModelId, stripVendorPrefix } from "./modelId.js";
 import type { ChatOptions, ProviderName, ReasoningEffort, TokenUsage } from "./types.js";
 
 interface ProviderSpec {
@@ -49,11 +50,11 @@ export const PROVIDER_PRIORITY: ProviderName[] = [
   "gemini",
 ];
 
-/** Model prefix → native provider mapping (for smart auto-detection). */
-const MODEL_VENDOR_TO_PROVIDER: Record<string, ProviderName> = {
-  "anthropic/": "anthropic",
-  "google/": "gemini",
-  "openai/": "openai",
+/** Model vendor segment → native provider mapping (for smart auto-detection). */
+const VENDOR_TO_PROVIDER: Record<string, ProviderName> = {
+  anthropic: "anthropic",
+  google: "gemini",
+  openai: "openai",
 };
 
 export class ProviderError extends Error {}
@@ -109,16 +110,17 @@ export function resolveProvider(options: {
     return build(requested);
   }
 
-  // Model-aware auto-detect
+  // Model-aware auto-detect: a vendor-prefixed model prefers that vendor's
+  // native API when its key is available.
   if (options.model) {
-    for (const [prefix, providerName] of Object.entries(MODEL_VENDOR_TO_PROVIDER)) {
-      if (options.model.startsWith(prefix)) {
-        const spec = PROVIDERS[providerName];
-        if (options.apiKey ?? env[spec.envVar]) {
-          return build(providerName);
-        }
-        break; // prefix matched but key missing — fall through
+    const { vendor } = parseModelId(options.model);
+    const providerName = vendor ? VENDOR_TO_PROVIDER[vendor] : undefined;
+    if (providerName) {
+      const spec = PROVIDERS[providerName];
+      if (options.apiKey ?? env[spec.envVar]) {
+        return build(providerName);
       }
+      // vendor matched but key missing — fall through
     }
   }
 
@@ -209,13 +211,14 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
     maxRetries: 0, // we own retry logic (and so does Inngest when wrapped in steps)
   });
 
-  let apiModel = model;
-  if (resolved.prefixToStrip && apiModel.startsWith(resolved.prefixToStrip)) {
-    apiModel = apiModel.slice(resolved.prefixToStrip.length);
-  }
+  const apiModel = stripVendorPrefix(model, resolved.prefixToStrip);
 
   let currentMaxTokens = maxTokens;
-  const totalUsage = { promptTokens: 0, completionTokens: 0, model };
+  const totalUsage: TokenUsage & { model: string } = {
+    promptTokens: 0,
+    completionTokens: 0,
+    model,
+  };
 
   for (let emptyAttempt = 0; emptyAttempt < EMPTY_RESPONSE_MAX_RETRIES; emptyAttempt++) {
     let gotResponse = false;
@@ -232,6 +235,11 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
           messages,
           [tokenKey]: currentMaxTokens,
         };
+        // OpenRouter returns the actual billed cost (cache-aware) in usage.cost
+        // when asked — authoritative, so we don't have to derive it from a table.
+        if (resolved.provider === "openrouter") {
+          kwargs.usage = { include: true };
+        }
         // OpenAI reasoning models (o-series, GPT-5 family) reject explicit temperature
         if (temperature !== null && temperature !== undefined && !needsCompletionTokens) {
           kwargs.temperature = temperature;
@@ -247,6 +255,11 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
 
         totalUsage.promptTokens += resp.usage?.prompt_tokens ?? 0;
         totalUsage.completionTokens += resp.usage?.completion_tokens ?? 0;
+        // Provider-reported actual cost (e.g. OpenRouter usage.cost), when present.
+        const reportedCost = (resp.usage as { cost?: number } | undefined)?.cost;
+        if (typeof reportedCost === "number") {
+          totalUsage.costUsd = (totalUsage.costUsd ?? 0) + reportedCost;
+        }
 
         const content = resp.choices?.[0]?.message?.content ?? "";
         if (content.trim()) {

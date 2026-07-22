@@ -142,6 +142,7 @@ export {
 } from "./cost.js";
 export { countTokens, truncateText, chunkText } from "./tokens.js";
 export { addUsage, type UsageAccumulator } from "./usage.js";
+export { parseModelId, stripVendorPrefix, type ParsedModelId } from "./modelId.js";
 export {
   assignParagraphIndices,
   getWindowContext,

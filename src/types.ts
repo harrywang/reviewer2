@@ -21,6 +21,13 @@ export type ReasoningEffort = "none" | "low" | "medium" | "high";
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
+  /**
+   * Provider-reported actual cost in USD, when the API returns one (e.g.
+   * OpenRouter `usage.cost`). Undefined for providers that return tokens only —
+   * those are priced from the cost table instead. computeCost() prefers this
+   * when present.
+   */
+  costUsd?: number;
 }
 
 /** Output of a review method. */

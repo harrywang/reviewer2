@@ -55,6 +55,37 @@ export function prepareProgressive(documentContent: string): ProgressivePlan {
   return { paragraphs, passages, docTokens, maxSummaryTokens };
 }
 
+/**
+ * Update the running summary with one passage's new content. Shared by the
+ * deep-check path and the skip-nontechnical path so they can't drift (and both
+ * apply the same summary-token cap).
+ */
+async function updateSummary(args: {
+  runningSummary: string;
+  passageText: string;
+  passageIndex: number;
+  totalPassages: number;
+  maxSummaryTokens: number;
+  options: ReviewOptions;
+}): Promise<{ summary: string; usage: TokenUsage }> {
+  const prompt = summaryUpdatePrompt({
+    currentSummary: args.runningSummary || "(empty — this is the first passage)",
+    passageText: args.passageText,
+    passageIdx: args.passageIndex,
+    totalPassages: args.totalPassages,
+    overrides: args.options.prompts,
+  });
+  const resp = await chat([{ role: "user", content: prompt }], {
+    ...chatOptionsFrom(args.options),
+    maxTokens: 3000,
+  });
+  let summary = resp.text.trim();
+  if (countTokens(summary) > args.maxSummaryTokens) {
+    summary = summary.slice(0, args.maxSummaryTokens * 4);
+  }
+  return { summary, usage: resp.usage };
+}
+
 /* ------------------------------------------------------------------ */
 /* Per-passage step: deep-check + summary update                       */
 /* ------------------------------------------------------------------ */
@@ -109,6 +140,9 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
   });
   usage.promptTokens += deepCheck.usage.promptTokens;
   usage.completionTokens += deepCheck.usage.completionTokens;
+  if (typeof deepCheck.usage.costUsd === "number") {
+    usage.costUsd = (usage.costUsd ?? 0) + deepCheck.usage.costUsd;
+  }
 
   let comments: ReviewComment[] = [];
   if (deepCheck.text.trim()) {
@@ -119,26 +153,21 @@ export async function runProgressivePassage(input: PassageStepInput): Promise<Pa
   }
 
   // Step 2: Update running summary
-  const summaryPrompt = summaryUpdatePrompt({
-    currentSummary: runningSummary || "(empty — this is the first passage)",
+  const summaryStep = await updateSummary({
+    runningSummary,
     passageText: passage.text,
-    passageIdx: passageIndex,
+    passageIndex,
     totalPassages: plan.passages.length,
-    overrides: options.prompts,
+    maxSummaryTokens: plan.maxSummaryTokens,
+    options,
   });
-  const summaryResp = await chat([{ role: "user", content: summaryPrompt }], {
-    ...chatOpts,
-    maxTokens: 3000,
-  });
-  usage.promptTokens += summaryResp.usage.promptTokens;
-  usage.completionTokens += summaryResp.usage.completionTokens;
-
-  let updatedSummary = summaryResp.text.trim();
-  if (countTokens(updatedSummary) > plan.maxSummaryTokens) {
-    updatedSummary = updatedSummary.slice(0, plan.maxSummaryTokens * 4);
+  usage.promptTokens += summaryStep.usage.promptTokens;
+  usage.completionTokens += summaryStep.usage.completionTokens;
+  if (typeof summaryStep.usage.costUsd === "number") {
+    usage.costUsd = (usage.costUsd ?? 0) + summaryStep.usage.costUsd;
   }
 
-  return { comments, updatedSummary, usage, skipped: false };
+  return { comments, updatedSummary: summaryStep.summary, usage, skipped: false };
 }
 
 /** Ask the model whether a passage has technical content worth checking. */
@@ -268,23 +297,16 @@ export async function reviewProgressive(
       addUsage(result, usage, result.model);
       if (!technical) {
         // Still update the summary for skipped passages (may hold definitions)
-        const summaryResp = await chat(
-          [
-            {
-              role: "user",
-              content: summaryUpdatePrompt({
-                currentSummary: runningSummary || "(empty — this is the first passage)",
-                passageText: plan.passages[idx].text,
-                passageIdx: idx,
-                totalPassages: plan.passages.length,
-                overrides: options.prompts,
-              }),
-            },
-          ],
-          { ...chatOptionsFrom(options), maxTokens: 3000 },
-        );
-        addUsage(result, summaryResp.usage, result.model);
-        runningSummary = summaryResp.text.trim();
+        const summaryStep = await updateSummary({
+          runningSummary,
+          passageText: plan.passages[idx].text,
+          passageIndex: idx,
+          totalPassages: plan.passages.length,
+          maxSummaryTokens: plan.maxSummaryTokens,
+          options,
+        });
+        addUsage(result, summaryStep.usage, result.model);
+        runningSummary = summaryStep.summary;
         continue;
       }
     }
