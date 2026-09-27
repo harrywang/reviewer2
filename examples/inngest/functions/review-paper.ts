@@ -44,7 +44,7 @@ export const reviewPaperFn = inngest.createFunction(
     const options: ReviewOptions = {
       // Default: OPENAI_API_KEY from env. Pass provider/model per tenant if needed:
       // provider: "openrouter", model: "anthropic/claude-opus-4-6", apiKey: ...
-      model: process.env.REVIEW_MODEL ?? "gpt-5-mini",
+      model: process.env.REVIEW_MODEL ?? "gpt-6-luna",
       // Pin the prompt date so retried/replayed steps build identical prompts
       currentDate: new Date(event.ts ?? Date.now()).toISOString().slice(0, 10),
     };

@@ -154,8 +154,8 @@ information, but having it in context isn't the same as using it:
 The trade-off is real: `zero_shot` is ~35× fewer calls, which is why it
 exists for triage.
 
-For scale: a 25-page paper through `progressive` with `gpt-5-mini` is ~35 LLM
-calls, ~10 minutes, ≈$0.10. The same paper through `zero_shot` is one call.
+For scale: a 25-page paper through `progressive` with `gpt-6-luna` is ~35 LLM
+calls, ~10 minutes, ≈$0.03. The same paper through `zero_shot` is one call.
 
 `progressive` also returns the pre-consolidation comments as a separate
 `progressive_original` method block in the output JSON, so a UI can show

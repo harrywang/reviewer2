@@ -194,6 +194,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Retries transient errors with exponential backoff; retries empty responses
  * (reasoning consumed all tokens) with doubled maxTokens.
  */
+/**
+ * OpenAI reasoning models (o-series, GPT-5 and later) require
+ * max_completion_tokens and reject temperature. Match the family, not one
+ * generation — gpt-6-* used to fall through a startsWith("gpt-5") check and 400.
+ */
+export function isOpenAiReasoningModel(apiModel: string): boolean {
+  return /^(o[1-9]|gpt-[5-9])/.test(apiModel);
+}
+
 export async function chat(messages: ChatMessage[], options: ChatOptions = {}): Promise<ChatResponse> {
   const resolved = resolveProvider(options);
   const model = options.model ?? defaultModelFor(resolved.provider);
@@ -224,10 +233,8 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
     let gotResponse = false;
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
-        // OpenAI o-series and GPT-5+ models require max_completion_tokens
         const needsCompletionTokens =
-          resolved.provider === "openai" &&
-          (/^o[134]/.test(apiModel) || apiModel.startsWith("gpt-5"));
+          resolved.provider === "openai" && isOpenAiReasoningModel(apiModel);
         const tokenKey = needsCompletionTokens ? "max_completion_tokens" : "max_tokens";
 
         const kwargs: Record<string, unknown> = {
@@ -240,7 +247,7 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}): 
         if (resolved.provider === "openrouter") {
           kwargs.usage = { include: true };
         }
-        // OpenAI reasoning models (o-series, GPT-5 family) reject explicit temperature
+        // OpenAI reasoning models reject explicit temperature
         if (temperature !== null && temperature !== undefined && !needsCompletionTokens) {
           kwargs.temperature = temperature;
         }

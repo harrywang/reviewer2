@@ -43,6 +43,15 @@ describe("computeCost model matching (longest-match, order-independent)", () => 
     expect(cost).toBeCloseTo(1.25);
   });
 
+  it("prices gpt-6 ids from their own entries, not DEFAULT_COST", () => {
+    const tokens = { totalPromptTokens: 1_000_000, totalCompletionTokens: 1_000_000 };
+    expect(computeCost({ model: "gpt-6-luna", ...tokens })).toBeCloseTo(0.1 + 0.5);
+    expect(computeCost({ model: "gpt-6-sol", ...tokens })).toBeCloseTo(2.0 + 10.0);
+    expect(computeCost({ model: "openai/gpt-6-astra", ...tokens })).toBeCloseTo(10.0 + 50.0);
+    // gpt-5.6-luna contains "6-luna" but must not resolve to gpt-6-luna
+    expect(computeCost({ model: "gpt-5.6-luna", ...tokens })).toBeCloseTo(0.2 + 1.2);
+  });
+
   it("uses an injected pricing table", () => {
     const cost = computeCost(
       { model: "acme/custom", totalPromptTokens: 1_000_000, totalCompletionTokens: 0 },
