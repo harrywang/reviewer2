@@ -11,7 +11,7 @@ const { paper, referenceResult, referenceStats, checkedReferences } = await revi
   checkReferences: true,
   references: {
     mailto: "you@example.com",   // optional: Crossref/OpenAlex "polite pool" (just an email)
-    model: "gpt-5-mini",         // optional: cheaper model for extraction/adjudication
+    model: "gpt-6-luna",         // optional: cheaper model for extraction/adjudication
   },
 });
 
@@ -42,8 +42,8 @@ checkedReferences;
 Rough expectations for a typical conference paper (~35 references): about a
 minute end-to-end — one extraction call plus free database lookups
 (adjudication calls only for ambiguous entries). Approximate cost by model:
-≈ $0.21 with `gpt-5.6` (sol), ≈ $0.10 with `gpt-5.6-terra`, ≈ $0.04 with
-`gpt-5.6-luna`.
+≈ $0.08 with `gpt-6-sol`, under $0.01 with `gpt-6-luna`, ≈ $0.15 with
+`gpt-5.6` (sol).
 
 ## How it works
 
